@@ -27,11 +27,53 @@ if (!file.exists(opt$mappingFile)) {
   stop("SNP mapping file does not exist", call.=FALSE)
 }
 
-# Function to convert DArT SNP mapping to VCF
+# Clean up csv
+
+fix_csv_header <- function(csv_file) {
+  cat("Preprocessing CSV header to fix duplicates...\n")
+  lines <- readLines(csv_file)
+  header_line <- lines[7]  # Sample names are on line 7
+  
+  # Fix spaces and duplicates in header
+  header_parts <- strsplit(header_line, ",")[[1]]
+  header_parts <- gsub(" ", "", header_parts)  # Remove spaces
+  
+  # First pass: identify all names that appear multiple times
+  name_counts <- table(header_parts)
+  duplicate_names <- names(name_counts)[name_counts > 1]
+  
+  if (length(duplicate_names) > 0) {
+    cat("Found duplicates:", paste(duplicate_names, collapse = ", "), "\n")
+    
+    # Second pass: rename ALL occurrences of duplicate names
+    for (i in seq_along(header_parts)) {
+      name <- header_parts[i]
+      if (name %in% duplicate_names) {
+        header_parts[i] <- paste0(name, "Col", i)
+        cat("Renamed duplicate:", name, "->", header_parts[i], "\n")
+      }
+    }
+  }
+  
+  # Replace the header line
+  lines[7] <- paste(header_parts, collapse = ",")
+  
+  # Write fixed CSV
+  temp_file <- paste0(csv_file, "_fixed.csv")
+  writeLines(lines, temp_file)
+  cat("Fixed CSV written to:", temp_file, "\n")
+  return(temp_file)
+}
+
+
+# Then modify the beginning of your existing function:
 snp_mapping_to_vcf_fixed <- function(snp_file, output.file, ploidy = 2) {
   
-  cat("Reading DArT SNP mapping file:", snp_file, "\n")
+  # Add this line at the very beginning:
+  snp_file <- fix_csv_header(snp_file)
   
+  cat("Reading DArT SNP mapping file:", snp_file, "\n")
+
   # Read SNP mapping data (skip first 6 header rows like DArT format)
   snp_data <- suppressMessages(read_csv(snp_file, skip = 6, show_col_types = FALSE))
   snp_data <- as.data.frame(snp_data, check.names = FALSE)
@@ -55,7 +97,7 @@ snp_mapping_to_vcf_fixed <- function(snp_file, output.file, ploidy = 2) {
   sample_cols <- names(snp_data)[!(names(snp_data) %in% metadata_cols)]
   
   # Fix sample names: replace spaces with underscores
-  sample_cols_fixed <- gsub(" ", "_", sample_cols)
+  sample_cols_fixed <- sample_cols
   
   cat("Found", length(sample_cols), "samples and", nrow(snp_data), "markers\n")
   
