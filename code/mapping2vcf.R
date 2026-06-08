@@ -69,7 +69,6 @@ fix_csv_header <- function(csv_file) {
 # Then modify the beginning of your existing function:
 snp_mapping_to_vcf_fixed <- function(snp_file, output.file, ploidy = 2) {
   
-  # Add this line at the very beginning:
   snp_file <- fix_csv_header(snp_file)
   
   cat("Reading DArT SNP mapping file:", snp_file, "\n")
@@ -109,14 +108,6 @@ snp_mapping_to_vcf_fixed <- function(snp_file, output.file, ploidy = 2) {
     chrom <- snp_data$`Chrom_Cassava_v7Phyto`[i]
     if (is.na(chrom) || chrom == "") {
       snp_data$`Chrom_Cassava_v7Phyto`[i] <- "Unknown"
-    }
-    
-    # Clean position - ensure it's a positive integer
-    pos <- snp_data$`ChromPosSnp_Cassava_v7Phyto`[i]
-    if (is.na(pos) || pos == "" || pos <= 0) {
-      snp_data$`ChromPosSnp_Cassava_v7Phyto`[i] <- i  # Use marker index
-    } else {
-      snp_data$`ChromPosSnp_Cassava_v7Phyto`[i] <- max(1, as.integer(pos))
     }
   }
   
@@ -163,13 +154,25 @@ snp_mapping_to_vcf_fixed <- function(snp_file, output.file, ploidy = 2) {
   
   # Extract REF/ALT from SNP column
   get_ref_alt <- function(snp_info) {
-    if (!is.na(snp_info) && snp_info != "" && grepl(">", snp_info)) {
-      parts <- strsplit(as.character(snp_info), ">")[[1]]
-      if (length(parts) == 2 && nchar(parts[1]) > 0 && nchar(parts[2]) > 0) {
-        return(list(ref = parts[1], alt = parts[2]))
+    if (!is.na(snp_info) && snp_info != "" && grepl(":", snp_info) && grepl(">", snp_info)) {
+      # First split by colon to remove position number
+      colon_parts <- strsplit(as.character(snp_info), ":")[[1]]
+      if (length(colon_parts) >= 2) {
+        # Get the nucleotide part (after the colon)
+        nucleotide_part <- colon_parts[2]  # This gets "A>C" from "51:A>C"
+        
+        # Now split by > to get REF and ALT
+        if (grepl(">", nucleotide_part)) {
+          ref_alt_parts <- strsplit(nucleotide_part, ">")[[1]]
+          if (length(ref_alt_parts) == 2 && 
+              nchar(ref_alt_parts[1]) > 0 && 
+              nchar(ref_alt_parts[2]) > 0) {
+            return(list(ref = ref_alt_parts[1], alt = ref_alt_parts[2]))
+          }
+        }
       }
     }
-    return(list(ref = "A", alt = "T"))  # Default
+    return(list(ref = "N", alt = "N"))  # Unknown 
   }
   
   # Create contig header lines
@@ -204,6 +207,11 @@ snp_mapping_to_vcf_fixed <- function(snp_file, output.file, ploidy = 2) {
     chrom <- snp_data$`Chrom_Cassava_v7Phyto`[i]
     pos <- snp_data$`ChromPosSnp_Cassava_v7Phyto`[i]
     snp_info <- snp_data$SNP[i]
+    
+    # SKIP MARKERS WITH POSITION 0 OR MISSING
+    if (is.na(pos) || pos == 0) {
+      next  # Skip this marker entirely
+    }
     
     # Get REF/ALT
     ref_alt <- get_ref_alt(snp_info)

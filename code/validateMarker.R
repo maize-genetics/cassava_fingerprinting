@@ -3,7 +3,7 @@ find_genotype_examples <- function(marker_id, mapping_file, vcf_file, dosage_fil
   
   library(readr)
   
-  # Read files (same as before)
+  # Read files 
   mapping_data <- suppressMessages(read_csv(mapping_file, skip = 6, show_col_types = FALSE))
   mapping_data <- as.data.frame(mapping_data, check.names = FALSE)
   
