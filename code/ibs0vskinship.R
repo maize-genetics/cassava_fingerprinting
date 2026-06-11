@@ -526,8 +526,8 @@ p_max_unconnected <- ggplot(max_unconnected_relationships, aes(x = KINSHIP, y = 
   scale_shape_manual(values = relationship_shapes, name = "Pairing Type") +
   
   labs(
-    title = "Maximum Relationships Among Unconnected Samples",
-    subtitle = paste("Strongest connections for", nrow(max_unconnected_relationships), "samples unconnected to main network"),
+    title = "Maximum relationships among unmatched farm samples",
+    subtitle = paste("Strongest connections for", nrow(max_unconnected_relationships), "with reference matches"),
     x = "KING Kinship Coefficient (Φ)",
     y = "IBS0 Coefficient"
   ) +
