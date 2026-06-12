@@ -2,6 +2,8 @@
 ##### June 2026
 ##### bfe4@cornell.edu
 
+[Sneak peak, described below](https://maize-genetics.github.io/cassava_fingerprinting/cassava_knowledge_graph.html)
+
 ## Raw files
 Starts with DArTseq-LD data in SNP_mapping_2.csv format
 - Report_DCas22-7517_SNP_mapping_2.csv
@@ -121,7 +123,7 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 
 ## Additional notes
 
-Attempted to find additional reference samples to match unmatched farm samples; however, VCF files did not have overlapping positions. Can return to analysis later with imputted vcf files. 
+Attempted to find additional reference samples to match unmatched farm samples; however, VCF files did not have overlapping positions. Can return to analysis later with imputed vcf files. 
 
 ### See if any same samples as reference from fingerprinting
 
@@ -159,3 +161,33 @@ bcftools query -l DCas19_4459_v7_sorted.vcf | grep -f ~/Documents/cassava_finger
 bcftools isec -p tmp_dir cleaned_DCas19_4459_v7_sorted_labeled_markerIDs_fixref.vcf.gz cleaned_Report_DCas22-7517_SNP_mapping_2_sorted_Names_labeled_markerIDs_fixref.vcf.gz
 bcftools isec -p tmp_dir cleaned_Report_DCas22-7517_SNP_mapping_2_sorted_Names_labeled_markerIDs_fixref.vcf.gz DCas19_4459_v7_sorted.vcf.gz
 ```
+
+## Citations
+
+### Software and Tools
+
+**R Statistical Software:**
+R Core Team (2023). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/
+
+**Cytoscape:**
+Shannon P, Markiel A, Ozier O, Baliga NS, Wang JT, Ramage D, Amin N, Schwikowski B, Ideker T (2003). Cytoscape: A Software Environment for Integrated Models of Biomolecular Interaction Networks. *Genome Research*, 13(11):2498-2504. doi: 10.1101/gr.1239303
+
+**PLINK:**
+Chang CC, Chow CC, Tellier LC, Vattikuti S, Purcell SM, Lee JJ (2015). Second-generation PLINK: rising to the challenge of larger and richer datasets. *GigaScience*, 4:7. doi: 10.1186/s13742-015-0047-8
+
+**KING:**
+Manichaikul A, Mychaleckyj JC, Rich SS, Daly K, Sale M, Chen WM (2010). Robust relationship inference in genome-wide association studies. *Bioinformatics*, 26(22):2867-2873. doi: 10.1093/bioinformatics/btq559
+
+### R Packages
+
+**visNetwork:**
+Almende B.V., Benoit Thieurmel and Titouan Robert (2019). visNetwork: Network Visualization using 'vis.js' Library. R package version 2.0.9. https://CRAN.R-project.org/package=visNetwork
+
+**dplyr:**
+Wickham H, François R, Henry L, Müller K (2023). dplyr: A Grammar of Data Manipulation. R package version 1.1.3. https://CRAN.R-project.org/package=dplyr
+
+**ggplot2:**
+Wickham H (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. ISBN 978-3-319-24277-4. https://ggplot2.tidyverse.org
+
+**ggrepel:**
+Slowikowski K (2023). ggrepel: Automatically Position Non-Overlapping Text Labels with 'ggplot2'. R package version 0.9.4. https://CRAN.R-project.org/package=ggrepel
