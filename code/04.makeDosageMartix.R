@@ -1,3 +1,5 @@
+# Convert dosage file from PLINK .traw file into a matrix 
+
 library(optparse)
 
 # Command line options
