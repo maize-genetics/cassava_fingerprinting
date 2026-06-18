@@ -13,7 +13,7 @@ ref_ref_temp <- read.csv("ref_ref_relationships.csv")
 max_ref_relationships <- bind_rows(
   max_ref_temp,
   ref_ref_temp %>% 
-    filter(Relationship %in% c("Vegetative clones", "First degree", "Second degree"))
+    filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree"))
 )
 
 # Preview
@@ -147,7 +147,7 @@ vis_nodes <- nodes %>%
     # Node sizes based on type
     size = ifelse(node_type == "Reference", 25, 15),
     # Node colors
-    color = ifelse(node_type == "Reference", "#8B0000", "#2E8B57")
+    color = ifelse(node_type == "Reference", "pink", "grey")
   ) %>%
   select(id, label, group, title, size, color)
 
@@ -163,8 +163,8 @@ vis_edges <- edges %>%
     # Edge colors based on relationship type
     color = case_when(
       Relationship == "First degree" ~ "#ff4444",
-      Relationship == "Second degree" ~ "#ff8800", 
-      Relationship == "Vegetative clones" ~ "#44ff44",
+      Relationship == "Second degree" ~ "blue", 
+      Relationship == "Highly related / clones" ~ "purple", 
       TRUE ~ "#888888"
     ),
     # Hover tooltip for edges
@@ -225,8 +225,8 @@ knowledge_graph <- visNetwork(vis_nodes, vis_edges) %>%
   # Legend
   visLegend(
     addNodes = list(
-      list(label = "Reference Variety", color = "#8B0000", size = 25),
-      list(label = "Farm Sample", color = "#2E8B57", size = 15)
+      list(label = "Reference Variety", color = "pink", size = 25),
+      list(label = "Farm Sample", color = "grey", size = 15)
     ),
     useGroups = FALSE,
     position = "right"

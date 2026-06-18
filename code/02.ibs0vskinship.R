@@ -52,7 +52,7 @@ combined_data <- merge(
 
 classify_relationships <- function(ibs0, kinship) {
   case_when(
-    kinship >= 0.36 ~ "Vegetative clones",
+    kinship >= 0.36 ~ "Highly related / clones",
     kinship >= 0.19 & kinship < 0.36 ~ "First degree",
     kinship >= 0.088 & kinship < 0.19 ~ "Second degree",
     kinship >= 0.044 & kinship < 0.088 ~ "Third degree",
@@ -136,7 +136,7 @@ print(head(ref_ref_relationships))
 
 # Set up colors
 relationship_colors <- c(
-  "Vegetative clones" = "#FF0000",
+  "Highly related / clones" = "#FF0000",
   "First degree" = "#0066CC", 
   "Second degree" = "#FF69B4",
   "Third degree" = "#8A2BE2",
@@ -171,7 +171,7 @@ p_max_ref <- ggplot(max_ref_relationships, aes(x = KINSHIP, y = IBS0,
   theme(
     plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
     plot.subtitle = element_text(hjust = 0.5, size = 11),
-    legend.position = "bottom"
+    legend.position = "right"
   ) +
   coord_cartesian(xlim = c(0, 0.52), ylim = c(0, 0.1))
 
@@ -191,7 +191,7 @@ cat("2. maximum_reference_relationships_plot.png\n")
 
 # Filter for strong relationships only in ref-ref relationships
 strong_ref_ref_relationships <- ref_ref_relationships %>%
-  filter(Relationship %in% c("Vegetative clones", "First degree", "Second degree", "Third degree"))
+  filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree", "Third degree"))
 
 cat("=== STRONG REF-REF ANALYSIS ===\n")
 cat("Total strong ref-ref relationships found:", nrow(strong_ref_ref_relationships), "\n")
@@ -243,7 +243,7 @@ if(nrow(strong_ref_ref_relationships) > 0) {
     theme(
       plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
       plot.subtitle = element_text(hjust = 0.5, size = 11),
-      legend.position = "bottom"
+      legend.position = "right"
     ) +
     coord_cartesian(xlim = c(0, 0.52), ylim = c(0, 0.1))
   
@@ -269,7 +269,7 @@ complete_reference_stats <- data.frame(reference_variety = reference_varieties) 
   left_join(
     # Get vegetative clone counts
     max_ref_relationships %>%
-      filter(Relationship == "Vegetative clones") %>%
+      filter(Relationship == "Highly related / clones") %>%
       group_by(ref_partner) %>%
       summarise(
         clone_count = n(),
@@ -291,7 +291,7 @@ complete_reference_stats <- data.frame(reference_variety = reference_varieties) 
         first_degree = sum(Relationship == "First degree"),
         second_degree = sum(Relationship == "Second degree"),
         third_degree = sum(Relationship == "Third degree"),
-        vegetative_clones = sum(Relationship == "Vegetative clones"),
+        vegetative_clones = sum(Relationship == "Highly related / clones"),
         fourth_degree = sum(Relationship == "Fourth degree and unrelated"),
         unrelated = sum(Relationship == "unrelated"),
         .groups = 'drop'
@@ -345,7 +345,7 @@ library(kableExtra)
 # Create formatted table
 kable(head(enhanced_reference_table, 15), 
       caption = "Top 15 Cassava Reference Varieties by Farm Usage",
-      col.names = c("Reference Variety", "Clones", "Clone %", "Avg Kinship", 
+      col.names = c("Reference Variety", "Highly related / clones", "Highly related / clones %", "Avg Kinship", 
                     "Strong Rels", "Total Connections", "1st°", "2nd°", "3rd°", "4th°", "Diversity"))
 
 cat("\n=== ANALYSIS COMPLETE ===\n")
@@ -366,7 +366,7 @@ unconnected_farm_samples <- combined_data %>%
   filter((IID1 %in% reference_varieties & !IID2 %in% reference_varieties) | 
            (!IID1 %in% reference_varieties & IID2 %in% reference_varieties)) %>%
   # Filter for strong relationships only
-  filter(Relationship %in% c("Vegetative clones", "First degree", "Second degree")) %>%
+  filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree")) %>%
   # Get the farm samples that do have strong ref relationships
   mutate(
     farm_sample = case_when(
@@ -395,7 +395,7 @@ cat("Unconnected farm samples:", length(unconnected_farms), "\n")
 # Find reference varieties without clonal/1st/2nd degree relationships with any other sample
 connected_references <- combined_data %>%
   filter(IID1 %in% reference_varieties | IID2 %in% reference_varieties) %>%
-  filter(Relationship %in% c("Vegetative clones", "First degree", "Second degree")) %>%
+  filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree")) %>%
   {unique(c(.[.$IID1 %in% reference_varieties, "IID1"],
             .[.$IID2 %in% reference_varieties, "IID2"]))} %>%
   .[!is.na(.)]
@@ -497,7 +497,7 @@ max_unconnected_relationships <- unconnected_relationships %>%
 
 # Set up colors for relationship types
 relationship_colors <- c(
-  "Vegetative clones" = "#FF0000",
+  "Highly related / clones" = "#FF0000",
   "First degree" = "#0066CC", 
   "Second degree" = "#FF69B4",
   "Third degree" = "#8A2BE2",
@@ -537,7 +537,7 @@ p_max_unconnected <- ggplot(max_unconnected_relationships, aes(x = KINSHIP, y = 
   theme(
     plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
     plot.subtitle = element_text(hjust = 0.5, size = 11),
-    legend.position = "bottom"
+    legend.position = "right"
   ) +
   coord_cartesian(xlim = c(0, 0.52), ylim = c(0, 0.1))
 
