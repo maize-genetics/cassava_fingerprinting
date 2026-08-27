@@ -1,3 +1,6 @@
+Here's an updated README reflecting your current analysis pipeline, including the corrected script (with the reference name fix), the IBD segment analysis attempt, and updated file outputs:
+
+```markdown
 # Cassava fingerprinting analyses
 ##### June 2026
 ##### bfe4@cornell.edu
@@ -10,7 +13,7 @@ Starts with DArTseq-LD data in SNP_mapping_2.csv format
 
 ## Code
 - code/01.mapping2vcf.R: csv needs to be converted to a vcf file
-- code/02.ibs0vskinship.R: analyze PLINK and King results
+- code/02.ibs0vskinship.R: analyze PLINK and KING results, classify relationships, identify clones and unmatched samples
 - code/03.knowledge_graph.R: make knowledge graph 
 - code/04.makeDosageMartix.R: convert PLINK dosage file to matrix (for other software program testing)
 
@@ -87,6 +90,33 @@ plink --vcf output/Report_DCas22-7517_SNP_mapping_2_sorted_Names.vcf \
 - code/02.ibs0vskinship.R
 - code/03.knowledge_graph.R
 
+**Note on sample name formatting:** Several reference variety names contain underscores (e.g., `OFUMBA_CHAI`, `NJULE_RED`, `MASAKA_LOCAL-1`, `MASAKA_LOCAL-2`). PLINK/KING interpret the text before the underscore as the Family ID (FID) and the text after as the Individual ID (IID), splitting these names apart in the raw output. `code/02.ibs0vskinship.R` includes a correction step (`fix_split_names()`) to reconstruct the full sample names before downstream analysis.
+
+## Relationship classification approach
+
+We use **KING's robust kinship coefficient** (Φ) as the primary metric for classifying pairwise relationships, since it is robust to population structure/stratification (important for a diverse cassava germplasm panel mixing reference varieties and farmer-maintained samples):
+
+| Kinship (Φ) | Relationship |
+|---|---|
+| ≥ 0.36 | Highly related / clones* |
+| ≥ 0.19 | First degree (parent-offspring or full siblings) |
+| ≥ 0.088 | Second degree |
+| ≥ 0.044 | Third degree |
+| < 0.044 | Fourth degree / unrelated |
+
+\* We use "highly related / clones" rather than a definitive "clones" label because kinship + IBS0 alone cannot distinguish a true vegetative clone from a highly inbred relative (e.g., progeny of self-pollination). Distinguishing these would require pedigree records or additional analysis.
+
+**IBS0** (the proportion of SNPs where two samples are opposite homozygotes, e.g., AA vs. aa) is plotted alongside kinship as a visual/diagnostic check, since it is one of the raw inputs to the kinship calculation itself and helps flag borderline cases or potential genotyping issues.
+
+### Why not IBD segment analysis?
+We attempted KING's IBD segment detection (`--ibdseg`) as a potentially more precise alternative, but our DArTseq-LD marker density was insufficient:
+```
+king -b output/Report_DCas22-7517_SNP_mapping_2_sorted_Names.bed --ibdseg --prefix output/cassava_ibdseg
+#Total length of 4 chromosomal segments usable for IBD segment analysis is 88.4 Mb.
+#Segments too short.
+```
+Only 88.4 Mb of the genome had sufficient marker density for segment detection (a small fraction of the ~760 Mb cassava genome), so we proceeded with the kinship coefficient + IBS0 approach instead.
+
 ### Extras:
 
 ### To get PLINK dosage file
@@ -103,9 +133,10 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 ```
 
 ## Figures 
-- figures/maximum_reference_relationships_plot.png (maximum pairwise relationship between a farm x reference sample)
-- figures/maximum_unconnected_relationships_plot.png (relationships among samples that did not have a strong relationship with a reference sample in the first analysis)
-- figures/reference_strong_relationships.png (relationships amoung reference samples)
+- figures/maximum_reference_relationships_plot.png: strongest pairwise relationship for each farm sample to any reference variety (farm-reference), plus reference-reference pairs
+- figures/reference_strong_relationships.png: strong (clone/1st/2nd/3rd degree) relationships among reference varieties only
+- figures/combined_farm_connectivity_plot.png: for farm samples lacking a strong reference match, shows their true strongest connection (searched across the full dataset) - split into farms with a farm-farm clone/close match vs. truly isolated farms
+- figures/isolated_reference_varieties_plot.png / table: reference varieties lacking any clone/1st/2nd degree match, with their true strongest connection
 
 ## Network visualization
 [View knowledge graph of strongest farm x reference and reference x reference pairwise relationships](https://maize-genetics.github.io/cassava_fingerprinting/cassava_knowledge_graph.html)
@@ -116,10 +147,15 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 - Blue edges: reference-reference relationships
 
 ## Files generated from R scripts (not in git repo)
-- `complete_reference_stats.csv` - Reference variety statistics
-- `max_ref_relationships.csv` - Maximum farm-reference pairwise relationships
-- `ref_ref_relationships.csv` - Reference x reference relationships  
-- `max_unconnected_relationships.csv` - Relationships among unconnected samples (farm samples without a clonal, 1st or 2nd degree relationship with a reference sample).
+- `max_ref_relationships.csv` - Maximum farm-reference pairwise relationships (one row per farm sample)
+- `ref_ref_relationships.csv` - All reference x reference pairwise relationships
+- `complete_reference_stats.csv` - Summary statistics per reference variety (clone counts, relationship type breakdown, etc.)
+- `true_max_unmatched_farms.csv` - True strongest connection (searched across full dataset) for farm samples lacking a strong reference match
+- `farms_with_farm_farm_clones.csv` - Subset of the above: farms with a strong farm-farm match despite no reference match (likely unlabeled duplicate/sister clones)
+- `truly_isolated_farms.csv` - Subset of the above: farms with no strong match to anything (reference or farm)
+- `true_max_isolated_references.csv` / `isolated_reference_varieties_true_max.csv` - Reference varieties lacking a clone/1st/2nd degree match, with their true strongest connection
+
+**Important methodological note:** When identifying "unmatched"/"isolated" samples, we search each unmatched sample's strongest connection across the **entire dataset**, not just within a restricted subset of other unmatched samples. An earlier version of this analysis restricted the search to pairs where *both* samples lacked a reference match, which incorrectly excluded valid strong matches (e.g., a farm sample's true clone partner might itself have a strong reference match and would otherwise be excluded from consideration).
 
 ## Additional notes
 
@@ -132,62 +168,4 @@ Attempted to find additional reference samples to match unmatched farm samples; 
 export PYTHONPATH=/programs/CrossMap-0.7.3/lib64/python3.9/site-packages:/programs/CrossMap-0.7.3/lib/python3.9/site-packages
 export PATH=/programs/CrossMap-0.7.3/bin:$PATH
 sed 's/>Chromosome0*\([0-9]*\)$/>\1/' Mesculenta_520_v7.fa > Mesculenta_520_v7_Names.fa
-CrossMap vcf Mesculenta_305_v6.to_v7.final.numeric.chain.gz DCas19_4459.vcf.gz Mesculenta_520_v7_Names.fa.gz DCas19_4459_v7.vcf
-vcf-sort -c DCas19_4459_v7.vcf > DCas19_4459_v7_sorted.vcf
-CrossMap vcf Mesculenta_305_v6.to_v7.final.numeric.chain.gz DCas19_4459_82719.vcf.gz Mesculenta_520_v7_Names.fa.gz DCas19_4459_82719_v7.vcf
-vcf-sort -c DCas19_4459_82719_v7.vcf > DCas19_4459_82719_v7_sorted.vcf
-```
-
-### Check if any of the same samples between files
-```bash
-bcftools query -l DCas19_4459_82719_v7_sorted.vcf | grep -f ~/Documents/cassava_fingerprinting/reference_only.txt
-#Mkumba
-#NASE14
-#UG120024
-#UG120156
-#UG120183
-#UG120193
-bcftools query -l DCas19_4459_v7_sorted.vcf | grep -f ~/Documents/cassava_fingerprinting/reference_only.txt
-#Mkumba 
-#NASE14 
-#UG120024
-#UG120156
-#UG120183
-#UG120193
-```
-
-### Check for overlaps
-```bash
-bcftools isec -p tmp_dir cleaned_DCas19_4459_v7_sorted_labeled_markerIDs_fixref.vcf.gz cleaned_Report_DCas22-7517_SNP_mapping_2_sorted_Names_labeled_markerIDs_fixref.vcf.gz
-bcftools isec -p tmp_dir cleaned_Report_DCas22-7517_SNP_mapping_2_sorted_Names_labeled_markerIDs_fixref.vcf.gz DCas19_4459_v7_sorted.vcf.gz
-```
-
-## Citations
-
-### Software and Tools
-
-**R Statistical Software:**
-R Core Team (2023). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/
-
-**Cytoscape:**
-Shannon P, Markiel A, Ozier O, Baliga NS, Wang JT, Ramage D, Amin N, Schwikowski B, Ideker T (2003). Cytoscape: A Software Environment for Integrated Models of Biomolecular Interaction Networks. *Genome Research*, 13(11):2498-2504. doi: 10.1101/gr.1239303
-
-**PLINK:**
-Chang CC, Chow CC, Tellier LC, Vattikuti S, Purcell SM, Lee JJ (2015). Second-generation PLINK: rising to the challenge of larger and richer datasets. *GigaScience*, 4:7. doi: 10.1186/s13742-015-0047-8
-
-**KING:**
-Manichaikul A, Mychaleckyj JC, Rich SS, Daly K, Sale M, Chen WM (2010). Robust relationship inference in genome-wide association studies. *Bioinformatics*, 26(22):2867-2873. doi: 10.1093/bioinformatics/btq559
-
-### R Packages
-
-**visNetwork:**
-Almende B.V., Benoit Thieurmel and Titouan Robert (2019). visNetwork: Network Visualization using 'vis.js' Library. R package version 2.0.9. https://CRAN.R-project.org/package=visNetwork
-
-**dplyr:**
-Wickham H, François R, Henry L, Müller K (2023). dplyr: A Grammar of Data Manipulation. R package version 1.1.3. https://CRAN.R-project.org/package=dplyr
-
-**ggplot2:**
-Wickham H (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. ISBN 978-3-319-24277-4. https://ggplot2.tidyverse.org
-
-**ggrepel:**
-Slowikowski K (2023). ggrepel: Automatically Position Non-Overlapping Text Labels with 'ggplot2'. R package version 0.9.4. https://CRAN.R-project.org/package=ggrepel
+CrossMap vcf Mesculenta_305_v6.to_v7.final.numeric.chain.gz DCas19_4459.vcf.gz M
