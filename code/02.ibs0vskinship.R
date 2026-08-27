@@ -4,7 +4,8 @@
 library(dplyr)
 library(ggplot2)
 library(ggrepel)
-
+library(gt)
+library(webshot2)
 # Set working directory ----
 setwd("~/Documents/cassava_fingerprinting/")
 
@@ -20,6 +21,66 @@ colnames(king_data) <- c("FID1", "IID1", "FID2", "IID2", "NSNP", "HETHET", "IBS0
 # Read PLINK IBD data 
 plink_data <- read.table("output/Report_DCas22-7517_SNP_mapping_2_sorted_Names_geno0.2_mind0.2_maf0.01.genome", 
                          header = TRUE, stringsAsFactors = FALSE)
+
+# Rename X.FID1 column
+colnames(king_data_check)[1] <- "FID1"
+
+# Define the problematic patterns
+fix_split_names <- function(data) {
+  data %>%
+    mutate(
+      # Fix IID1 first
+      IID1 = case_when(
+        FID1 == "MASAKA" & IID1 == "LOCAL-2" ~ "MASAKA_LOCAL-2",
+        FID1 == "NJULE" & IID1 == "RED" ~ "NJULE_RED",
+        FID1 == "MASAKA" & IID1 == "LOCAL-1" ~ "MASAKA_LOCAL-1",
+        FID1 == "OFUMBA" & IID1 == "CHAI" ~ "OFUMBA_CHAI",
+        TRUE ~ IID1
+      ),
+      # Fix IID2
+      IID2 = case_when(
+        FID2 == "MASAKA" & IID2 == "LOCAL-2" ~ "MASAKA_LOCAL-2",
+        FID2 == "NJULE" & IID2 == "RED" ~ "NJULE_RED",
+        FID2 == "MASAKA" & IID2 == "LOCAL-1" ~ "MASAKA_LOCAL-1",
+        FID2 == "OFUMBA" & IID2 == "CHAI" ~ "OFUMBA_CHAI",
+        TRUE ~ IID2
+      ),
+      # Fix FID1 to match corrected IID1
+      FID1 = case_when(
+        IID1 == "MASAKA_LOCAL-2" ~ "MASAKA_LOCAL-2",
+        IID1 == "NJULE_RED" ~ "NJULE_RED",
+        IID1 == "MASAKA_LOCAL-1" ~ "MASAKA_LOCAL-1",
+        IID1 == "OFUMBA_CHAI" ~ "OFUMBA_CHAI",
+        TRUE ~ FID1
+      ),
+      # Fix FID2 to match corrected IID2
+      FID2 = case_when(
+        IID2 == "MASAKA_LOCAL-2" ~ "MASAKA_LOCAL-2",
+        IID2 == "NJULE_RED" ~ "NJULE_RED",
+        IID2 == "MASAKA_LOCAL-1" ~ "MASAKA_LOCAL-1",
+        IID2 == "OFUMBA_CHAI" ~ "OFUMBA_CHAI",
+        TRUE ~ FID2
+      )
+    )
+}
+
+# Apply fix to king_data
+king_data <- fix_split_names(king_data)
+
+# Apply fix to plink_data  
+plink_data <- fix_split_names(plink_data)
+
+# Verify the fix worked for both datasets
+cat("=== VERIFICATION ===\n")
+cat("KING data - checking all columns:\n")
+king_verify <- king_data %>% 
+  filter(IID1 %in% c("MASAKA_LOCAL-2", "NJULE_RED", "MASAKA_LOCAL-1", "OFUMBA_CHAI"))
+print(head(king_verify, 4))
+
+cat("\nPLINK data - checking all columns:\n")
+plink_verify <- plink_data %>% 
+  filter(IID1 %in% c("MASAKA_LOCAL-2", "NJULE_RED", "MASAKA_LOCAL-1", "OFUMBA_CHAI"))
+print(head(plink_verify, 4))
 
 # Define reference varieties
 reference_varieties <- c(
@@ -357,17 +418,16 @@ cat("4. Enhanced reference table displayed above\n")
 
 # ==============================================================================
 # Look at unmatched farm samples (no clonal/1st/2nd degree relationships with any reference)
+# Then find their TRUE strongest connection (to ANY sample, farm or reference)
 # ==============================================================================
 
-# Step 1: Identify unmatched samples
-# Find farm samples with no clonal/1st/2nd degree relationships with any reference
-unconnected_farm_samples <- combined_data %>%
-  # Get all farm-reference relationships
+# ------------------------------------------------------------------------------
+# Step 1: Identify farm samples that DO have a strong reference match
+# ------------------------------------------------------------------------------
+connected_farms_via_reference <- combined_data %>%
   filter((IID1 %in% reference_varieties & !IID2 %in% reference_varieties) | 
            (!IID1 %in% reference_varieties & IID2 %in% reference_varieties)) %>%
-  # Filter for strong relationships only
   filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree")) %>%
-  # Get the farm samples that do have strong ref relationships
   mutate(
     farm_sample = case_when(
       IID1 %in% reference_varieties ~ IID2,
@@ -379,20 +439,93 @@ unconnected_farm_samples <- combined_data %>%
   pull(farm_sample) %>%
   unique()
 
-# Get all farm samples that are not in the connected list
+# ------------------------------------------------------------------------------
+# Step 2: Get ALL farm samples in the dataset
+# ------------------------------------------------------------------------------
 all_farm_samples <- combined_data %>%
   filter(!IID1 %in% reference_varieties | !IID2 %in% reference_varieties) %>%
   {unique(c(.[!.$IID1 %in% reference_varieties, "IID1"], 
             .[!.$IID2 %in% reference_varieties, "IID2"]))} %>%
   .[!is.na(.)]
 
-unconnected_farms <- setdiff(all_farm_samples, unconnected_farm_samples)
+# ------------------------------------------------------------------------------
+# Step 3: Farms WITHOUT a strong reference match
+# ------------------------------------------------------------------------------
+farms_without_ref_match <- setdiff(all_farm_samples, connected_farms_via_reference)
 
+cat("=== FARM SAMPLES: REFERENCE MATCH STATUS ===\n")
 cat("Total farm samples:", length(all_farm_samples), "\n")
-cat("Farm samples connected to references:", length(unconnected_farm_samples), "\n") 
-cat("Unconnected farm samples:", length(unconnected_farms), "\n")
+cat("Farms WITH strong reference match:", length(connected_farms_via_reference), "\n") 
+cat("Farms WITHOUT strong reference match:", length(farms_without_ref_match), "\n\n")
 
-# Find reference varieties without clonal/1st/2nd degree relationships with any other sample
+# ------------------------------------------------------------------------------
+# Step 4: For farms lacking a reference match, find TRUE strongest connection
+# (search FULL combined_data - partner can be ANY sample, farm or reference)
+# ------------------------------------------------------------------------------
+true_max_for_unmatched_farms <- combined_data %>%
+  filter(IID1 %in% farms_without_ref_match | IID2 %in% farms_without_ref_match) %>%
+  mutate(
+    farm_sample = case_when(
+      IID1 %in% farms_without_ref_match ~ IID1,
+      IID2 %in% farms_without_ref_match ~ IID2
+    ),
+    partner = case_when(
+      IID1 %in% farms_without_ref_match ~ IID2,
+      IID2 %in% farms_without_ref_match ~ IID1
+    ),
+    partner_type = ifelse(partner %in% reference_varieties, "Reference", "Farm")
+  ) %>%
+  group_by(farm_sample) %>%
+  slice_max(KINSHIP, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(farm_sample, partner, partner_type, KINSHIP, IBS0, Relationship, NSNP) %>%
+  mutate(
+    relationship_category = case_when(
+      partner_type == "Reference" ~ "Farm-Reference",
+      TRUE ~ "Farm-Farm"
+    )
+  ) %>%
+  arrange(desc(KINSHIP))
+
+# Save full results
+write.csv(true_max_for_unmatched_farms, "true_max_unmatched_farms.csv", row.names = FALSE)
+
+cat("=== TRUE STRONGEST CONNECTION FOR FARMS LACKING REFERENCE MATCH ===\n")
+cat("Total farms analyzed:", nrow(true_max_for_unmatched_farms), "\n\n")
+
+# ------------------------------------------------------------------------------
+# Step 5: Split into two meaningful groups
+# ------------------------------------------------------------------------------
+
+# Group A: Farms with NO reference match, but STRONG match to another farm
+strong_farm_farm_connections <- true_max_for_unmatched_farms %>%
+  filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree"),
+         partner_type == "Farm")
+
+# Group B: Truly isolated farms - no strong match to reference OR farm
+truly_isolated_farms <- true_max_for_unmatched_farms %>%
+  filter(!Relationship %in% c("Highly related / clones", "First degree", "Second degree"))
+
+cat("=== SUMMARY ===\n")
+cat("Farms with NO reference match, but STRONG match to another farm:", 
+    nrow(strong_farm_farm_connections), "\n")
+cat("Farms truly isolated (no strong match to reference OR farm):", 
+    nrow(truly_isolated_farms), "\n\n")
+
+# Save both groups separately
+write.csv(strong_farm_farm_connections, "farms_with_farm_farm_clones.csv", row.names = FALSE)
+write.csv(truly_isolated_farms, "truly_isolated_farms.csv", row.names = FALSE)
+
+cat("Relationship breakdown for farm-farm connections:\n")
+print(table(strong_farm_farm_connections$Relationship))
+
+cat("\nRelationship breakdown for truly isolated farms:\n")
+print(table(truly_isolated_farms$Relationship))
+
+# ==============================================================================
+# Step 6: Also check reference varieties for the same issue (isolated references)
+# ==============================================================================
+
 connected_references <- combined_data %>%
   filter(IID1 %in% reference_varieties | IID2 %in% reference_varieties) %>%
   filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree")) %>%
@@ -402,100 +535,46 @@ connected_references <- combined_data %>%
 
 unconnected_references <- setdiff(reference_varieties, connected_references)
 
+cat("\n=== REFERENCE VARIETIES: CONNECTION STATUS ===\n")
 cat("Total reference varieties:", length(reference_varieties), "\n")
-cat("References with strong connections:", length(connected_references), "\n")
-cat("Unconnected references:", length(unconnected_references), "\n")
+cat("References WITH strong connection:", length(connected_references), "\n")
+cat("References WITHOUT strong connection:", length(unconnected_references), "\n")
 
-# Combine all unconnected samples
-all_unconnected_samples <- c(unconnected_farms, unconnected_references)
-cat("Total unconnected samples:", length(all_unconnected_samples), "\n")
-
-# Create third CSV with all pairwise relationships among unconnected samples
-unconnected_relationships <- combined_data %>%
-  # Keep only relationships where BOTH samples are in the unconnected list
-  filter(IID1 %in% all_unconnected_samples & IID2 %in% all_unconnected_samples) %>%
-  # Remove self-comparisons
-  filter(IID1 != IID2) %>%
-  select(
-    sample = IID1,
-    partner = IID2,
-    KINSHIP,
-    IBS0,
-    Relationship,
-    NSNP
-  ) %>%
-  # Add relationship category
+# Find TRUE strongest match for isolated references (search full dataset)
+true_max_isolated_refs <- combined_data %>%
+  filter(IID1 %in% unconnected_references | IID2 %in% unconnected_references) %>%
   mutate(
-    sample_type = ifelse(sample %in% reference_varieties, "Reference", "Farm"),
-    partner_type = ifelse(partner %in% reference_varieties, "Reference", "Farm"),
-    relationship_category = case_when(
-      sample_type == "Farm" & partner_type == "Farm" ~ "Farm-Farm",
-      sample_type == "Reference" & partner_type == "Reference" ~ "Reference-Reference", 
-      TRUE ~ "Farm-Reference"
-    )
-  )
-
-# Save the unconnected relationships
-write.csv(unconnected_relationships, "unconnected_relationships.csv", row.names = FALSE)
-
-# Print summary
-cat("\n=== UNCONNECTED RELATIONSHIPS SUMMARY ===\n")
-cat("Total unconnected relationships:", nrow(unconnected_relationships), "\n")
-cat("Relationship categories:\n")
-print(table(unconnected_relationships$relationship_category))
-cat("\nRelationship types:\n")
-print(table(unconnected_relationships$Relationship))
-
-# Show some examples
-cat("\n=== SAMPLE UNCONNECTED RELATIONSHIPS ===\n")
-print(head(unconnected_relationships %>% arrange(desc(KINSHIP)), 10))
-
-# Print summary with min/max kinship (analyzed within unconnected samples only)
-cat("\n=== UNCONNECTED RELATIONSHIPS SUMMARY ===\n")
-cat("Total unconnected relationships:", nrow(unconnected_relationships), "\n")
-
-# Overall kinship statistics
-cat("\nOverall kinship statistics:\n")
-cat("Min kinship:", round(min(unconnected_relationships$KINSHIP), 4), "\n")
-cat("Max kinship:", round(max(unconnected_relationships$KINSHIP), 4), "\n")
-cat("Mean kinship:", round(mean(unconnected_relationships$KINSHIP), 4), "\n")
-
-# Kinship statistics by relationship category
-cat("\nKinship statistics by relationship category:\n")
-kinship_by_category <- unconnected_relationships %>%
-  group_by(relationship_category) %>%
-  summarise(
-    count = n(),
-    min_kinship = round(min(KINSHIP), 4),
-    max_kinship = round(max(KINSHIP), 4),
-    mean_kinship = round(mean(KINSHIP), 4),
-    .groups = 'drop'
-  )
-print(kinship_by_category)
-
-cat("\nRelationship categories:\n")
-print(table(unconnected_relationships$relationship_category))
-
-cat("\nRelationship types:\n")
-print(table(unconnected_relationships$Relationship))
-
-# Show strongest relationships among unconnected samples
-cat("\n=== STRONGEST UNCONNECTED RELATIONSHIPS ===\n")
-print(head(unconnected_relationships %>% arrange(desc(KINSHIP)), 10))
-
-# ==============================================================================
-# Make plot for max unconnected relationships   
-# ==============================================================================
-
-library(ggplot2)
-
-# Create max unconnected relationships (strongest per sample)
-max_unconnected_relationships <- unconnected_relationships %>%
-  group_by(sample) %>%
+    reference = case_when(
+      IID1 %in% unconnected_references ~ IID1,
+      IID2 %in% unconnected_references ~ IID2
+    ),
+    partner = case_when(
+      IID1 %in% unconnected_references ~ IID2,
+      IID2 %in% unconnected_references ~ IID1
+    ),
+    partner_type = ifelse(partner %in% reference_varieties, "Reference", "Farm")
+  ) %>%
+  group_by(reference) %>%
   slice_max(KINSHIP, n = 1, with_ties = FALSE) %>%
-  ungroup()
+  ungroup() %>%
+  select(reference, partner, partner_type, KINSHIP, IBS0, Relationship, NSNP) %>%
+  mutate(
+    relationship_category = case_when(
+      partner_type == "Reference" ~ "Reference-Reference",
+      TRUE ~ "Reference-Farm"
+    )
+  ) %>%
+  arrange(desc(KINSHIP))
 
-# Set up colors for relationship types
+write.csv(true_max_isolated_refs, "true_max_isolated_references.csv", row.names = FALSE)
+
+cat("\n=== TRUE STRONGEST MATCH FOR ISOLATED REFERENCE VARIETIES ===\n")
+print(true_max_isolated_refs, n = Inf)
+
+# ==============================================================================
+# Step 7: Plots
+# ==============================================================================
+
 relationship_colors <- c(
   "Highly related / clones" = "#FF0000",
   "First degree" = "#0066CC", 
@@ -504,20 +583,25 @@ relationship_colors <- c(
   "Fourth degree and unrelated" = "#CCCCCC"
 )
 
-# Set up shapes for relationship categories
 relationship_shapes <- c(
   "Farm-Farm" = 15,              # Square
   "Reference-Reference" = 16,    # Circle  
   "Farm-Reference" = 17          # Triangle
 )
 
-# Create the plot
-p_max_unconnected <- ggplot(max_unconnected_relationships, aes(x = KINSHIP, y = IBS0, 
-                                                               color = Relationship, 
-                                                               shape = relationship_category)) +
+# Combine both groups - relationship_category already exists from earlier code
+# (Farm-Farm for strong_farm_farm_connections, Farm-Reference or Farm-Farm for truly_isolated_farms)
+combined_farm_analysis <- bind_rows(
+  strong_farm_farm_connections,
+  truly_isolated_farms
+)
+
+p_combined_farms <- ggplot(combined_farm_analysis, 
+                           aes(x = KINSHIP, y = IBS0, 
+                               color = Relationship, 
+                               shape = relationship_category)) +
   geom_point(size = 2, alpha = 0.7) +
   
-  # KING threshold lines
   geom_vline(xintercept = c(0.044, 0.088, 0.19, 0.36), 
              linetype = "dashed", alpha = 0.6, color = "gray30") +
   annotate("text", x = c(0.044, 0.088, 0.19, 0.36), y = 0.05, 
@@ -528,8 +612,9 @@ p_max_unconnected <- ggplot(max_unconnected_relationships, aes(x = KINSHIP, y = 
   scale_shape_manual(values = relationship_shapes, name = "Pairing Type") +
   
   labs(
-    title = "Maximum relationships among unmatched farm samples",
-    subtitle = paste("Strongest connections for", nrow(max_unconnected_relationships), "farm samples without reference matches"),
+    title = "Farm Samples Lacking Reference Match: True Strongest Connection",
+    subtitle = paste("Strongest connection for", nrow(combined_farm_analysis), 
+                     "farm samples without clonal/1st/2nd degree reference match"),
     x = "KING Kinship Coefficient (Φ)",
     y = "IBS0 Coefficient"
   ) +
@@ -541,21 +626,114 @@ p_max_unconnected <- ggplot(max_unconnected_relationships, aes(x = KINSHIP, y = 
   ) +
   coord_cartesian(xlim = c(0, 0.52), ylim = c(0, 0.1))
 
-# Display and save plot
-print(p_max_unconnected)
-ggsave("maximum_unconnected_relationships_plot.png", p_max_unconnected, 
+print(p_combined_farms)
+
+ggsave("combined_farm_connectivity_plot.png", p_combined_farms, 
        width = 12, height = 8, dpi = 300)
 
-# Save the data
-write.csv(max_unconnected_relationships, "max_unconnected_relationships.csv", row.names = FALSE)
+cat("Saved combined plot: combined_farm_connectivity_plot.png\n")
 
-cat("\n=== UNCONNECTED ANALYSIS COMPLETE ===\n")
-cat("Files created:\n")
-cat("1. max_unconnected_relationships.csv -", nrow(max_unconnected_relationships), "samples\n")
-cat("2. maximum_unconnected_relationships_plot.png\n")
+# ==============================================================================
+# Step 8: Final Summary
+# ==============================================================================
 
-# Print summary stats
-cat("\nUnconnected relationship summary:\n")
-print(table(max_unconnected_relationships$relationship_category))
-cat("\nKinship range:", round(min(max_unconnected_relationships$KINSHIP), 3), 
-    "to", round(max(max_unconnected_relationships$KINSHIP), 3), "\n")
+cat("\n=== FINAL SUMMARY: FARM SAMPLE CONNECTIVITY ===\n")
+cat("Total farm samples:", length(all_farm_samples), "\n")
+cat("  - Connected to reference (clone/1st/2nd degree):", length(connected_farms_via_reference), 
+    " (", round(length(connected_farms_via_reference)/length(all_farm_samples)*100, 1), "%)\n")
+cat("  - No reference match, but connected to another farm:", nrow(strong_farm_farm_connections),
+    " (", round(nrow(strong_farm_farm_connections)/length(all_farm_samples)*100, 1), "%)\n")
+cat("  - Truly isolated (no strong match to anything):", nrow(truly_isolated_farms),
+    " (", round(nrow(truly_isolated_farms)/length(all_farm_samples)*100, 1), "%)\n")
+
+cat("\n=== FINAL SUMMARY: REFERENCE VARIETY CONNECTIVITY ===\n")
+cat("Total reference varieties:", length(reference_varieties), "\n")
+cat("  - Connected (clone/1st/2nd degree to anything):", length(connected_references),
+    " (", round(length(connected_references)/length(reference_varieties)*100, 1), "%)\n")
+cat("  - Isolated (no strong connections):", length(unconnected_references),
+    " (", round(length(unconnected_references)/length(reference_varieties)*100, 1), "%)\n")
+
+cat("\n=== FILES SAVED ===\n")
+cat("1. true_max_unmatched_farms.csv - all farms lacking reference match with their true best partner\n")
+cat("2. farms_with_farm_farm_clones.csv -", nrow(strong_farm_farm_connections), "farms with farm-farm strong matches\n")
+cat("3. truly_isolated_farms.csv -", nrow(truly_isolated_farms), "farms with no strong match anywhere\n")
+cat("4. true_max_isolated_references.csv -", nrow(true_max_isolated_refs), "isolated reference varieties with true best match\n")
+cat("5. farm_farm_clones_no_reference_match.png - plot\n")
+cat("6. truly_isolated_farms.png - plot\n")
+
+cat("\n=== ANALYSIS COMPLETE ===\n")
+
+
+Copy code
+# ==============================================================================
+# Reference varieties without strong matches - TABLE ONLY
+# ==============================================================================
+
+# Step 1: Identify reference varieties WITH a strong connection to anything
+connected_references <- combined_data %>%
+  filter(IID1 %in% reference_varieties | IID2 %in% reference_varieties) %>%
+  filter(Relationship %in% c("Highly related / clones", "First degree", "Second degree")) %>%
+  {unique(c(.[.$IID1 %in% reference_varieties, "IID1"],
+            .[.$IID2 %in% reference_varieties, "IID2"]))} %>%
+  .[!is.na(.)]
+
+unconnected_references <- setdiff(reference_varieties, connected_references)
+
+cat("Total reference varieties:", length(reference_varieties), "\n")
+cat("References WITHOUT strong connection:", length(unconnected_references), "\n\n")
+
+# Step 2: For isolated references, find TRUE strongest match (full dataset search)
+true_max_isolated_refs <- combined_data %>%
+  filter(IID1 %in% unconnected_references | IID2 %in% unconnected_references) %>%
+  mutate(
+    reference = case_when(
+      IID1 %in% unconnected_references ~ IID1,
+      IID2 %in% unconnected_references ~ IID2
+    ),
+    partner = case_when(
+      IID1 %in% unconnected_references ~ IID2,
+      IID2 %in% unconnected_references ~ IID1
+    ),
+    partner_type = ifelse(partner %in% reference_varieties, "Reference", "Farm")
+  ) %>%
+  group_by(reference) %>%
+  slice_max(KINSHIP, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(
+    Reference_Variety = reference,
+    Strongest_Match = partner,
+    Match_Type = partner_type,
+    Kinship = KINSHIP,
+    IBS0,
+    Relationship,
+    NSNP
+  ) %>%
+  mutate(
+    Kinship = round(Kinship, 4),
+    IBS0 = round(IBS0, 4)
+  ) %>%
+  arrange(desc(Kinship))
+
+cat("=== REFERENCE VARIETIES WITHOUT STRONG MATCH: TRUE STRONGEST CONNECTION ===\n")
+print(true_max_isolated_refs, n = Inf)
+
+write.csv(true_max_isolated_refs, "isolated_reference_varieties_true_max.csv", row.names = FALSE)
+
+gt_table <- true_max_isolated_refs %>%
+  gt() %>%
+  tab_header(
+    title = "Isolated Reference Varieties: Strongest Genetic Match",
+    subtitle = paste(nrow(true_max_isolated_refs), 
+                     "reference varieties lacking clone/1st/2nd degree relationships")
+  ) %>%
+  fmt_number(columns = c(Kinship, IBS0), decimals = 4) %>%
+  data_color(
+    columns = Kinship,
+    colors = scales::col_numeric(
+      palette = c("red", "white", "green"),
+      domain = c(min(true_max_isolated_refs$Kinship), 0.088)
+    )
+  )
+
+# Save as PNG - drag this into Google Slides
+gtsave(gt_table, "isolated_reference_varieties_table.png")
