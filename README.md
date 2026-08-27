@@ -1,6 +1,3 @@
-Here's an updated README reflecting your current analysis pipeline, including the corrected script (with the reference name fix), the IBD segment analysis attempt, and updated file outputs:
-
-```markdown
 # Cassava fingerprinting analyses
 ##### June 2026
 ##### bfe4@cornell.edu
