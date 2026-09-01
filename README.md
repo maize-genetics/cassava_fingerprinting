@@ -133,15 +133,24 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 - figures/maximum_reference_relationships_plot.png: strongest pairwise relationship for each farm sample to any reference variety (farm-reference), plus reference-reference pairs
 - figures/reference_strong_relationships.png: strong (clone/1st/2nd/3rd degree) relationships among reference varieties only
 - figures/combined_farm_connectivity_plot.png: for farm samples lacking a strong reference match, shows their true strongest connection (searched across the full dataset) - split into farms with a farm-farm clone/close match vs. truly isolated farms
-- figures/isolated_reference_varieties_plot.png / table: reference varieties lacking any clone/1st/2nd degree match, with their true strongest connection
+- figures/isolated_reference_varieties_table.png: reference varieties lacking any clone/1st/2nd degree match, with their true strongest connection (table)
+- figures/maximum_reference_relationships_inbreeding_plot.png: maximum farm-reference relationships, plotting KING kinship coefficient against inbreeding coefficient (F) of the farm sample
+- figures/kinship_vs_deltaF_all_relationships.png: maximum farm-reference relationships, plotting kinship against ΔF (F_farm − F_reference), across all relationship categories
+- figures/F_farm_by_relationship_category.png: boxplot of farm sample inbreeding coefficient (F) using the maximum farm-reference relationship, grouped by relationship category to closest reference variety
+- figures/ibs0_clone_vs_firstdegree_comparison.png: comparison of IBS0 (proportion of opposite-homozygote genotypes) between "Highly related/clones" and "First degree" pairs (all pairwise relationships in the dataset, not just each sample's maximum match). Used to evaluate whether first-degree matches are consistent with direct parent-offspring relationships (genetically constrained to IBS0≈0) versus siblings sharing an unsampled parent (not similarly constrained). First-degree pairs show IBS0 roughly 4x higher than the clone-level floor (Welch's t-test, p < 2.2×10⁻¹⁶), consistent with siblings rather than direct parent-offspring.
+
 
 ## Network visualization
-[View knowledge graph of strongest farm x reference and reference x reference pairwise relationships](https://maize-genetics.github.io/cassava_fingerprinting/cassava_knowledge_graph.html)
+[View knowledge graph of strongest farm x reference and reference x reference pairwise relationships](https://maize-genetics.github.io/cassava_fingerprinting/cassava_knowledge_graph_v2.html)
 - Shows farm samples and reference varieties connected by genetic relationships
-- Green edges: vegetative clones
-- Red edges: first degree relationships  
-- Orange edges: second degree relationships
-- Blue edges: reference-reference relationships
+- Triangle = Reference variety, Circle = Farm sample
+- Red edges: vegetative clones
+- Blue edges: first degree relationships  
+- Pink edges: second degree relationships
+
+Additional network views:
+- [Farm-farm clonal relationships (samples lacking a reference match)](https://maize-genetics.github.io/cassava_fingerprinting/red_only_farms_knowledge_graph.html)
+- [Reference x Reference relationships (clone through 3rd degree)](https://maize-genetics.github.io/cassava_fingerprinting/ref_ref_clone_1st_2nd_3rd_degree_graph.html)
 
 ## Files generated from R scripts (not in git repo)
 - `max_ref_relationships.csv` - Maximum farm-reference pairwise relationships (one row per farm sample)
@@ -152,13 +161,21 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 - `truly_isolated_farms.csv` - Subset of the above: farms with no strong match to anything (reference or farm)
 - `true_max_isolated_references.csv` / `isolated_reference_varieties_true_max.csv` - Reference varieties lacking a clone/1st/2nd degree match, with their true strongest connection
 
+## Files generated from R scripts (not in git repo)
+- `max_ref_relationships.csv` - Maximum farm-reference pairwise relationships (one row per farm sample)
+- `ref_ref_relationships.csv` - All reference x reference pairwise relationships
+- `complete_reference_stats.csv` - Summary statistics per reference variety (clone counts, relationship type breakdown, etc.)
+- `max_unmatched_farms.csv` - True strongest connection (searched across full dataset) for farm samples lacking a strong reference match
+- `farms_with_farm_farm_clones.csv` - Subset of the above: farms with a strong farm-farm match despite no reference match (likely unlabeled duplicate/sister clones)
+- `truly_isolated_farms.csv` - Subset of the above: farms with no strong match to anything (reference or farm)
+- `true_max_isolated_references.csv` / `isolated_reference_varieties_true_max.csv` - Reference varieties lacking a clone/1st/2nd degree match, with their true strongest connection
+- `cytoscape_edges.csv` / `cytoscape_nodes.csv` - Node/edge lists formatted for standalone Cytoscape desktop app (not currently used for the visNetwork-based figures/graphs above). Kept for potential future use, since Cytoscape can use edge weight (e.g., kinship) to directly influence layout/branch length, unlike the force-based physics layout currently used in visNetwork.
+
 **Important methodological note:** When identifying "unmatched"/"isolated" samples, we search each unmatched sample's strongest connection across the **entire dataset**, not just within a restricted subset of other unmatched samples. An earlier version of this analysis restricted the search to pairs where *both* samples lacked a reference match, which incorrectly excluded valid strong matches (e.g., a farm sample's true clone partner might itself have a strong reference match and would otherwise be excluded from consideration).
 
 ## Additional notes
 
 Attempted to find additional reference samples to match unmatched farm samples; however, VCF files did not have overlapping positions. Can return to analysis later with imputed vcf files. 
-
-### See if any same samples as reference from fingerprinting
 
 ### Get data into match v7 coordinates
 ```bash
