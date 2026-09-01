@@ -141,7 +141,7 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 
 
 ## Network visualization
-[View knowledge graph of strongest farm x reference and reference x reference pairwise relationships](https://maize-genetics.github.io/cassava_fingerprinting/cassava_knowledge_graph_v2.html)
+[View knowledge graph of strongest farm x reference and reference x reference pairwise relationships](https://maize-genetics.github.io/cassava_fingerprinting/figures/cassava_knowledge_graph_v2.html)
 - Shows farm samples and reference varieties connected by genetic relationships
 - Triangle = Reference variety, Circle = Farm sample
 - Red edges: vegetative clones
@@ -149,8 +149,8 @@ Rscript code/makeDosageMartix.R -i output/Report_DCas22-7517_SNP_mapping_2_sorte
 - Pink edges: second degree relationships
 
 Additional network views:
-- [Farm-farm clonal relationships (samples lacking a reference match)](https://maize-genetics.github.io/cassava_fingerprinting/red_only_farms_knowledge_graph.html)
-- [Reference x Reference relationships (clone through 3rd degree)](https://maize-genetics.github.io/cassava_fingerprinting/ref_ref_clone_1st_2nd_3rd_degree_graph.html)
+- [Farm-farm clonal relationships (samples lacking a reference match)](https://maize-genetics.github.io/cassava_fingerprinting/figures/red_only_farms_knowledge_graph.html)
+- [Reference x Reference relationships (clone through 3rd degree)](https://maize-genetics.github.io/cassava_fingerprinting/figures/ref_ref_clone_1st_2nd_3rd_degree_graph.html)
 
 ## Files generated from R scripts (not in git repo)
 - `max_ref_relationships.csv` - Maximum farm-reference pairwise relationships (one row per farm sample)
