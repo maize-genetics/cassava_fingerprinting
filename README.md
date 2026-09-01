@@ -2,7 +2,7 @@
 ##### June 2026
 ##### bfe4@cornell.edu
 
-[Sneak peak, described below](https://maize-genetics.github.io/cassava_fingerprinting/cassava_knowledge_graph.html)
+[Main network figure, described below](https://maize-genetics.github.io/cassava_fingerprinting/figures/cassava_knowledge_graph_v2.html)
 
 ## Raw files
 Starts with DArTseq-LD data in SNP_mapping_2.csv format
