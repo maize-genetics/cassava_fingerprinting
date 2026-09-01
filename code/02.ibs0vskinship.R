@@ -23,7 +23,7 @@ plink_data <- read.table("output/Report_DCas22-7517_SNP_mapping_2_sorted_Names_g
                          header = TRUE, stringsAsFactors = FALSE)
 
 # Rename X.FID1 column
-colnames(king_data_check)[1] <- "FID1"
+colnames(king_data)[1] <- "FID1"
 
 # Define the problematic patterns
 fix_split_names <- function(data) {
@@ -488,7 +488,7 @@ true_max_for_unmatched_farms <- combined_data %>%
   arrange(desc(KINSHIP))
 
 # Save full results
-write.csv(true_max_for_unmatched_farms, "true_max_unmatched_farms.csv", row.names = FALSE)
+write.csv(true_max_for_unmatched_farms, "max_unmatched_farms.csv", row.names = FALSE)
 
 cat("=== TRUE STRONGEST CONNECTION FOR FARMS LACKING REFERENCE MATCH ===\n")
 cat("Total farms analyzed:", nrow(true_max_for_unmatched_farms), "\n\n")
@@ -664,7 +664,6 @@ cat("6. truly_isolated_farms.png - plot\n")
 cat("\n=== ANALYSIS COMPLETE ===\n")
 
 
-Copy code
 # ==============================================================================
 # Reference varieties without strong matches - TABLE ONLY
 # ==============================================================================
@@ -737,3 +736,630 @@ gt_table <- true_max_isolated_refs %>%
 
 # Save as PNG - drag this into Google Slides
 gtsave(gt_table, "isolated_reference_varieties_table.png")
+
+
+##### Look at inbreeding coefficient
+
+het_data <- read.table("output/Report_DCas22-7517_SNP_mapping_2_sorted_Names_geno0.2_mind0.2_maf0.01.het", 
+                       header = TRUE, stringsAsFactors = FALSE)
+
+head(het_data)
+colnames(het_data)
+
+het_data <- het_data %>%
+  mutate(
+    IID = case_when(
+      FID == "MASAKA" & IID == "LOCAL-2" ~ "MASAKA_LOCAL-2",
+      FID == "NJULE" & IID == "RED" ~ "NJULE_RED",
+      FID == "MASAKA" & IID == "LOCAL-1" ~ "MASAKA_LOCAL-1",
+      FID == "OFUMBA" & IID == "CHAI" ~ "OFUMBA_CHAI",
+      TRUE ~ IID
+    ),
+    FID = case_when(
+      IID == "MASAKA_LOCAL-2" ~ "MASAKA_LOCAL-2",
+      IID == "NJULE_RED" ~ "NJULE_RED",
+      IID == "MASAKA_LOCAL-1" ~ "MASAKA_LOCAL-1",
+      IID == "OFUMBA_CHAI" ~ "OFUMBA_CHAI",
+      TRUE ~ FID
+    )
+  )
+
+# Verify the fix worked
+het_data %>% filter(IID %in% c("MASAKA_LOCAL-2", "NJULE_RED", "MASAKA_LOCAL-1", "OFUMBA_CHAI"))
+
+# Plot kinship coefficient for max pair-wise farm x reference relationship by the inbreeding coefficient of the farm sample 
+
+max_ref_relationships <- max_ref_relationships %>%
+  left_join(
+    het_data %>% select(IID, F),
+    by = c("sample" = "IID")
+  )
+
+# Check the merge worked
+head(max_ref_relationships)
+
+# Check for any samples that didn't get an F value (missing from het_data)
+cat("Samples missing F value:", sum(is.na(max_ref_relationships$F)), "\n")
+
+
+p_max_ref_inbreeding <- ggplot(max_ref_relationships, aes(x = KINSHIP, y = F, 
+                                                          color = Relationship, 
+                                                          shape = relationship_category)) +
+  geom_point(size = 2, alpha = 0.7) +
+  
+  # KING threshold lines
+  geom_vline(xintercept = c(0.044, 0.088, 0.19, 0.36), 
+             linetype = "dashed", alpha = 0.6, color = "gray30") +
+  annotate("text", x = c(0.044, 0.088, 0.19, 0.36), y = max(max_ref_relationships$F, na.rm = TRUE) * 0.95, 
+           label = c("3rd", "2nd", "1st", "Clone"), 
+           color = "gray30", size = 3, angle = 90, vjust = -0.5) +
+  
+  scale_color_manual(values = relationship_colors, name = "Relationship Type") +
+  scale_shape_manual(values = c("Farm-Reference" = 17, 
+                                "Reference-Reference" = 16),
+                     name = "Pairing Type") +
+  
+  labs(
+    title = "Maximum reference x farm relationships",
+    subtitle = paste("Strongest reference connection for", nrow(max_ref_relationships), "samples"),
+    x = "KING Kinship Coefficient (Φ)",
+    y = "Inbreeding Coefficient (F)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    legend.position = "right"
+  ) +
+  coord_cartesian(xlim = c(0, 0.52))
+
+print(p_max_ref_inbreeding)
+
+ggsave("maximum_reference_relationships_inbreeding_plot.png", p_max_ref_inbreeding, 
+       width = 12, height = 8, dpi = 300)
+
+# Check out doing the diffence in the inbreeding coefficient between the ref and the farm sample
+
+max_ref_relationships <- max_ref_relationships %>%
+  left_join(
+    het_data %>% select(IID, F_ref = F),
+    by = c("ref_partner" = "IID")
+  )
+
+# Rename the farm sample's F column for clarity (if not already done)
+max_ref_relationships <- max_ref_relationships %>%
+  rename(F_farm = F)
+
+# Check the merge
+head(max_ref_relationships)
+
+# Check for missing values
+cat("Missing F_ref values:", sum(is.na(max_ref_relationships$F_ref)), "\n")
+
+# Calculate delta F
+max_ref_relationships <- max_ref_relationships %>%
+  mutate(delta_F = F_farm - F_ref)
+
+# Filter to just First degree (blue) points
+blue_only <- max_ref_relationships %>%
+  filter(Relationship == "First degree")
+
+# Correlation test: does lower kinship correlate with higher delta_F?
+cor_test_deltaF <- cor.test(blue_only$KINSHIP, blue_only$delta_F, method = "pearson")
+print(cor_test_deltaF)
+
+# Plot
+library(ggplot2)
+p_blue_deltaF <- ggplot(blue_only, aes(x = KINSHIP, y = delta_F)) +
+  geom_point(color = "#0066CC", size = 2, alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_smooth(method = "lm", color = "black", se = TRUE) +
+  labs(
+    title = "First Degree Relationships: Kinship vs ΔF (Farm - Reference)",
+    subtitle = paste0("Pearson r = ", round(cor_test_deltaF$estimate, 3), 
+                      ", p = ", format.pval(cor_test_deltaF$p.value, digits = 3)),
+    x = "KING Kinship Coefficient (Φ)",
+    y = "ΔF (Farm Inbreeding − Reference Inbreeding)"
+  ) +
+  theme_minimal()
+
+print(p_blue_deltaF)
+
+p_all_deltaF <- ggplot(max_ref_relationships, aes(x = KINSHIP, y = delta_F, color = Relationship)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  
+  geom_vline(xintercept = c(0.044, 0.088, 0.19, 0.36), 
+             linetype = "dashed", alpha = 0.6, color = "gray30") +
+  annotate("text", x = c(0.044, 0.088, 0.19, 0.36), y = max(max_ref_relationships$delta_F, na.rm = TRUE) * 0.95, 
+           label = c("3rd", "2nd", "1st", "Clone"), 
+           color = "gray30", size = 3, angle = 90, vjust = -0.5) +
+  
+  scale_color_manual(values = relationship_colors, name = "Relationship Type") +
+  
+  labs(
+    title = "Kinship vs ΔF (Farm − Reference) Across All Relationship Types",
+    subtitle = paste("All", nrow(max_ref_relationships), "farm-reference pairs"),
+    x = "KING Kinship Coefficient (Φ)",
+    y = "ΔF (Farm Inbreeding − Reference Inbreeding)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    legend.position = "right"
+  )
+
+print(p_all_deltaF)
+
+ggsave("kinship_vs_deltaF_all_relationships.png", p_all_deltaF, width = 12, height = 8, dpi = 300)
+
+# Boxplot F for ref versus farm
+
+het_data_labeled <- het_data %>%
+  mutate(sample_type = ifelse(IID %in% reference_varieties, "Reference", "Farm"))
+
+# Summary stats
+het_data_labeled %>%
+  group_by(sample_type) %>%
+  summarise(
+    n = n(),
+    mean_F = mean(F, na.rm = TRUE),
+    median_F = median(F, na.rm = TRUE),
+    sd_F = sd(F, na.rm = TRUE)
+  )
+
+# Statistical test
+wilcox.test(F ~ sample_type, data = het_data_labeled)
+
+# Visualize
+library(ggplot2)
+ggplot(het_data_labeled, aes(x = sample_type, y = F, fill = sample_type)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Inbreeding Coefficient: Reference Varieties vs Farm Samples",
+       y = "Inbreeding Coefficient (F)", x = "") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Same but by category
+
+# ==============================================================================
+# Check if negative F farm samples cluster within specific relationship categories
+# ==============================================================================
+
+# Summary: F_farm distribution by relationship category
+F_by_relationship <- max_ref_relationships %>%
+  group_by(Relationship) %>%
+  summarise(
+    n = n(),
+    pct_negative_F = round(100 * mean(F_farm < 0, na.rm = TRUE), 1),
+    mean_F_farm = round(mean(F_farm, na.rm = TRUE), 3),
+    median_F_farm = round(median(F_farm, na.rm = TRUE), 3),
+    min_F_farm = round(min(F_farm, na.rm = TRUE), 3),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(pct_negative_F))
+
+print(F_by_relationship)
+
+# Visualize: boxplot of F_farm split by relationship category
+library(ggplot2)
+
+# Reorder Relationship factor levels so red (clones) is furthest right
+max_ref_relationships$Relationship <- factor(
+  max_ref_relationships$Relationship,
+  levels = c("Fourth degree and unrelated", "Third degree", "Second degree", 
+             "First degree", "Highly related / clones")
+)
+
+# Recreate the plot with the new ordering
+p_F_by_relationship <- ggplot(max_ref_relationships, aes(x = Relationship, y = F_farm, fill = Relationship)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray30") +
+  scale_fill_manual(values = relationship_colors) +
+  labs(
+    title = "Farm Sample Inbreeding Coefficient (F) by Relationship to closest Reference",
+    y = "Inbreeding Coefficient (F) - Farm Sample",
+    x = "Relationship Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p_F_by_relationship)
+
+ggsave("F_farm_by_relationship_category.png", p_F_by_relationship, width = 10, height = 7, dpi = 300)
+
+# ==============================================================================
+# COMPREHENSIVE MULTI-PARENT / SPONTANEOUS CROSS CHECK
+# Using ALL samples (farm + reference), NO nearest-neighbor pre-filtering
+# ==============================================================================
+
+library(dplyr)
+library(igraph)
+
+# ------------------------------------------------------------------------------
+# Step 1: Build clone clusters using ALL samples (farm + reference)
+# ------------------------------------------------------------------------------
+
+all_clone_edges <- combined_data %>%
+  filter(Relationship == "Highly related / clones") %>%
+  filter(IID1 != IID2) %>%
+  select(IID1, IID2)
+
+clone_graph <- graph_from_data_frame(all_clone_edges, directed = FALSE)
+clone_components <- components(clone_graph)
+
+cluster_lookup <- data.frame(
+  sample_name = names(clone_components$membership),
+  cluster_id = clone_components$membership,
+  stringsAsFactors = FALSE
+)
+
+# Add singleton samples (no clone relationships at all) as their own unique cluster
+all_sample_names <- unique(c(combined_data$IID1, combined_data$IID2))
+singleton_samples <- setdiff(all_sample_names, cluster_lookup$sample_name)
+
+if (length(singleton_samples) > 0) {
+  singleton_lookup <- data.frame(
+    sample_name = singleton_samples,
+    cluster_id = max(cluster_lookup$cluster_id) + seq_along(singleton_samples),
+    stringsAsFactors = FALSE
+  )
+  cluster_lookup <- bind_rows(cluster_lookup, singleton_lookup)
+}
+
+# Create readable cluster labels, flagging whether each cluster contains reference(s)
+cluster_labels <- cluster_lookup %>%
+  mutate(is_ref = sample_name %in% reference_varieties) %>%
+  group_by(cluster_id) %>%
+  summarise(
+    cluster_label = paste(sort(sample_name), collapse = " = "),
+    n_members = n(),
+    contains_reference = any(is_ref),
+    .groups = 'drop'
+  )
+
+cluster_lookup <- cluster_lookup %>%
+  left_join(cluster_labels, by = "cluster_id")
+
+cat("=== CLONE CLUSTER SUMMARY (ALL SAMPLES) ===\n")
+cat("Total samples:", length(all_sample_names), "\n")
+cat("Total distinct clonal clusters:", n_distinct(cluster_lookup$cluster_id), "\n")
+cat("Clusters with >1 member (true clone groups):", sum(cluster_labels$n_members > 1), "\n\n")
+
+write.csv(cluster_lookup, "full_clone_cluster_lookup.csv", row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+# Step 2: For EVERY sample, pull ALL first-degree+ relationships (no pre-filtering)
+# ------------------------------------------------------------------------------
+
+all_strong_relationships <- combined_data %>%
+  filter(IID1 != IID2) %>%
+  filter(Relationship %in% c("Highly related / clones", "First degree")) %>%
+  select(IID1, IID2, KINSHIP, IBS0, Relationship, NSNP)
+
+# Make this symmetric (each sample sees all its partners, regardless of which column it was in)
+symmetric_relationships <- bind_rows(
+  all_strong_relationships %>% rename(sample = IID1, partner = IID2),
+  all_strong_relationships %>% rename(sample = IID2, partner = IID1)
+)
+
+# Attach cluster info for the PARTNER (so we can count distinct clusters matched)
+symmetric_relationships <- symmetric_relationships %>%
+  left_join(cluster_lookup %>% select(sample_name, cluster_id, cluster_label, contains_reference),
+            by = c("partner" = "sample_name"))
+
+# ------------------------------------------------------------------------------
+# Step 3: For every sample, count DISTINCT clusters it has a strong relationship to
+#         EXCLUDING its own cluster (i.e., don't count relationships to its own clones)
+# ------------------------------------------------------------------------------
+
+# Get each sample's own cluster_id, so we can exclude self-cluster matches
+own_cluster <- cluster_lookup %>% select(sample_name, own_cluster_id = cluster_id)
+
+symmetric_relationships <- symmetric_relationships %>%
+  left_join(own_cluster, by = c("sample" = "sample_name")) %>%
+  filter(cluster_id != own_cluster_id)  # exclude matches to your own clone-cluster members
+
+multi_parent_check_full <- symmetric_relationships %>%
+  group_by(sample) %>%
+  summarise(
+    n_distinct_clusters = n_distinct(cluster_id),
+    cluster_labels_matched = paste(unique(cluster_label), collapse = " ;; "),
+    any_reference_involved = any(contains_reference),
+    kinship_values = paste(round(KINSHIP, 3), collapse = ", "),
+    relationship_types = paste(Relationship, collapse = ", "),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(n_distinct_clusters))
+
+cat("=== COMPREHENSIVE MULTI-PARENT SIGNATURE CHECK ===\n")
+cat("(No nearest-neighbor filtering - checked ALL samples, ALL relationships)\n\n")
+
+cat("Samples with strong relationships to 2+ distinct clonal lineages:\n")
+multi_parent_candidates <- multi_parent_check_full %>% filter(n_distinct_clusters > 1)
+print(as.data.frame(multi_parent_candidates))
+
+cat("\nTotal candidates found:", nrow(multi_parent_candidates), "\n")
+cat("Of these, how many involve at least one reference variety:", 
+    sum(multi_parent_candidates$any_reference_involved), "\n")
+cat("Of these, how many are PURELY farm-farm (no reference involved at all):", 
+    sum(!multi_parent_candidates$any_reference_involved), "\n\n")
+
+cat("Distribution of number of distinct clusters matched:\n")
+cluster_count_dist <- multi_parent_check_full %>%
+  count(n_distinct_clusters)
+print(as.data.frame(cluster_count_dist))
+
+write.csv(multi_parent_check_full, "comprehensive_multi_parent_check.csv", row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+# Step 4: For the candidates, check IBS0 to see if any show TRUE parent-offspring
+#         signature (IBS0 near clone-floor ~0.002-0.003) vs sibling signature (elevated)
+# ------------------------------------------------------------------------------
+
+candidate_names <- multi_parent_candidates$sample
+cat("\nNumber of candidate names:", length(candidate_names), "\n")
+
+candidate_detail <- symmetric_relationships %>%
+  filter(sample %in% candidate_names) %>%
+  select(sample, partner, cluster_label, KINSHIP, IBS0, Relationship) %>%
+  arrange(sample, desc(KINSHIP))
+
+cat("Rows in candidate_detail:", nrow(candidate_detail), "\n\n")
+
+cat("\n=== DETAILED IBS0 CHECK FOR ALL MULTI-PARENT CANDIDATES ===\n")
+print(as.data.frame(candidate_detail))
+
+# Flag which specific relationships look like TRUE parent-offspring (low IBS0)
+# vs sibling-type (elevated IBS0), using clone-cluster floor as reference
+clone_ibs0_floor <- combined_data %>%
+  filter(Relationship == "Highly related / clones") %>%
+  summarise(mean_floor = mean(IBS0), q90_floor = quantile(IBS0, 0.90))
+
+cat("\nClone-level IBS0 floor (mean):", round(clone_ibs0_floor$mean_floor, 5), "\n")
+cat("Clone-level IBS0 floor (90th percentile):", round(clone_ibs0_floor$q90_floor, 5), "\n\n")
+
+candidate_detail <- candidate_detail %>%
+  mutate(
+    likely_direct_parent = IBS0 <= clone_ibs0_floor$q90_floor
+  )
+
+cat("Candidate relationships consistent with TRUE parent-offspring (low IBS0):\n")
+print(as.data.frame(candidate_detail %>% filter(likely_direct_parent)))
+
+cat("\nCandidate relationships consistent with SIBLING-type (elevated IBS0):\n")
+print(as.data.frame(candidate_detail %>% filter(!likely_direct_parent)))
+
+write.csv(candidate_detail, "multi_parent_candidates_ibs0_detail.csv", row.names = FALSE)
+
+cat("\n=== ANALYSIS COMPLETE ===\n")
+cat("Files created:\n")
+cat("1. full_clone_cluster_lookup.csv\n")
+cat("2. comprehensive_multi_parent_check.csv\n")
+cat("3. multi_parent_candidates_ibs0_detail.csv\n")
+
+# ==============================================================================
+# Break down the 644 multi-cluster candidates for interpretability
+# ==============================================================================
+
+# For each candidate, get their SINGLE strongest (max) relationship type
+# so we can see if this is "new" cases or just the blue cases we already found
+candidate_max_relationship <- symmetric_relationships %>%
+  filter(sample %in% multi_parent_candidates$sample) %>%
+  group_by(sample) %>%
+  slice_max(KINSHIP, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(sample, max_partner = partner, max_KINSHIP = KINSHIP, 
+         max_IBS0 = IBS0, max_Relationship = Relationship)
+
+# Join back to the candidate summary
+multi_parent_candidates_labeled <- multi_parent_candidates %>%
+  left_join(candidate_max_relationship, by = "sample")
+
+# Breakdown by max relationship type (clone vs first degree)
+cat("=== BREAKDOWN OF 644 CANDIDATES BY THEIR MAX RELATIONSHIP TYPE ===\n")
+print(as.data.frame(multi_parent_candidates_labeled %>% count(max_Relationship)))
+
+# Breakdown: is the sample itself a farm sample or reference?
+multi_parent_candidates_labeled <- multi_parent_candidates_labeled %>%
+  mutate(sample_type = ifelse(sample %in% reference_varieties, "Reference", "Farm"))
+
+cat("\n=== BREAKDOWN BY SAMPLE TYPE (Farm vs Reference) ===\n")
+print(as.data.frame(multi_parent_candidates_labeled %>% count(sample_type, max_Relationship)))
+
+# Cross-tab: sample type x whether reference is involved in their multi-match
+cat("\n=== CROSS-TAB: sample type x any_reference_involved ===\n")
+print(as.data.frame(multi_parent_candidates_labeled %>% 
+                      count(sample_type, any_reference_involved)))
+
+# How many of the ORIGINAL 38 "First degree farm-reference max" samples 
+# are actually IN this 644 list?
+original_38 <- max_ref_relationships %>% 
+  filter(Relationship == "First degree") %>% 
+  pull(sample)
+
+cat("\nOf the original 38 first-degree farm-reference samples, how many appear in the 644:\n")
+cat(sum(original_38 %in% multi_parent_candidates$sample), "out of", length(original_38), "\n")
+
+# IBS0 boxplot
+ibs0_comparison_data <- combined_data %>%
+  filter(IID1 != IID2) %>%
+  filter(Relationship %in% c("Highly related / clones", "First degree"))
+
+p_ibs0_comparison <- ggplot(ibs0_comparison_data, aes(x = Relationship, y = IBS0, fill = Relationship)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_hline(yintercept = clone_ibs0_floor$q90_floor, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("Highly related / clones" = "red", "First degree" = "#0066CC")) +
+  labs(
+    title = "IBS0: Clone vs First-Degree Relationships",
+    subtitle = "Dashed line = clone-level IBS0 90th percentile (parent-offspring threshold)",
+    y = "IBS0 Coefficient",
+    x = "Relationship Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+print(p_ibs0_comparison)
+ggsave("ibs0_clone_vs_firstdegree_comparison.png", p_ibs0_comparison, width = 8, height = 6, dpi = 300)
+
+# T test
+t.test(IBS0 ~ Relationship, data = combined_data %>% 
+         filter(Relationship %in% c("Highly related / clones", "First degree")),
+       var.equal = FALSE)  # This confirms Welch's (default), as opposed to var.equal = TRUE for classic Student's t-test
+
+
+# ==============================================================================
+# ALL-PAIRWISE VERSION: Same analysis as max_ref_relationships, but using
+# every farm-reference pair (not just each farm's single best match)
+# ==============================================================================
+
+# Build the all-pairwise farm x reference dataset (mirrors max_ref_relationships structure)
+all_ref_relationships <- combined_data %>%
+  filter(IID1 != IID2) %>%
+  filter((IID1 %in% reference_varieties & !IID2 %in% reference_varieties) |
+           (IID2 %in% reference_varieties & !IID1 %in% reference_varieties)) %>%
+  mutate(
+    sample = case_when(!IID1 %in% reference_varieties ~ IID1, 
+                       !IID2 %in% reference_varieties ~ IID2),
+    ref_partner = case_when(IID1 %in% reference_varieties ~ IID1, 
+                            IID2 %in% reference_varieties ~ IID2),
+    relationship_category = "Farm-Reference"
+  ) %>%
+  select(sample, ref_partner, KINSHIP, IBS0, Relationship, NSNP, relationship_category)
+
+# Merge in F for farm sample
+all_ref_relationships <- all_ref_relationships %>%
+  left_join(het_data %>% select(IID, F), by = c("sample" = "IID"))
+
+cat("Total all-pairwise farm-reference relationships:", nrow(all_ref_relationships), "\n")
+cat("(compare to max-relationship version which had", nrow(max_ref_relationships), "rows)\n\n")
+
+# ------------------------------------------------------------------------------
+# Plot: Kinship vs F (all pairwise)
+# ------------------------------------------------------------------------------
+
+p_all_ref_inbreeding <- ggplot(all_ref_relationships, aes(x = KINSHIP, y = F, 
+                                                          color = Relationship, 
+                                                          shape = relationship_category)) +
+  geom_point(size = 2, alpha = 0.5) +
+  geom_vline(xintercept = c(0.044, 0.088, 0.19, 0.36), 
+             linetype = "dashed", alpha = 0.6, color = "gray30") +
+  annotate("text", x = c(0.044, 0.088, 0.19, 0.36), y = max(all_ref_relationships$F, na.rm = TRUE) * 0.95, 
+           label = c("3rd", "2nd", "1st", "Clone"), 
+           color = "gray30", size = 3, angle = 90, vjust = -0.5) +
+  scale_color_manual(values = relationship_colors, name = "Relationship Type") +
+  scale_shape_manual(values = c("Farm-Reference" = 17), name = "Pairing Type") +
+  labs(
+    title = "All Pairwise Reference x Farm Relationships",
+    subtitle = paste("All", nrow(all_ref_relationships), "farm-reference pairs (not filtered to max)"),
+    x = "KING Kinship Coefficient (Φ)",
+    y = "Inbreeding Coefficient (F)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    legend.position = "right"
+  ) +
+  coord_cartesian(xlim = c(0, 0.52))
+
+print(p_all_ref_inbreeding)
+ggsave("all_pairwise_reference_relationships_inbreeding_plot.png", p_all_ref_inbreeding, 
+       width = 12, height = 8, dpi = 300)
+
+# ------------------------------------------------------------------------------
+# ΔF: merge in F_ref, calculate delta_F
+# ------------------------------------------------------------------------------
+
+all_ref_relationships <- all_ref_relationships %>%
+  left_join(het_data %>% select(IID, F_ref = F), by = c("ref_partner" = "IID")) %>%
+  rename(F_farm = F) %>%
+  mutate(delta_F = F_farm - F_ref)
+
+cat("Missing F_ref values:", sum(is.na(all_ref_relationships$F_ref)), "\n")
+
+# First Degree only - Kinship vs ΔF (NO correlation line, NO p-value, per your request)
+blue_only_all <- all_ref_relationships %>% filter(Relationship == "First degree")
+
+p_blue_deltaF_all <- ggplot(blue_only_all, aes(x = KINSHIP, y = delta_F)) +
+  geom_point(color = "#0066CC", size = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "First Degree Relationships: Kinship vs ΔF (Farm - Reference)",
+    subtitle = paste("All pairwise first-degree matches, n =", nrow(blue_only_all)),
+    x = "KING Kinship Coefficient (Φ)",
+    y = "ΔF (Farm Inbreeding − Reference Inbreeding)"
+  ) +
+  theme_minimal()
+
+print(p_blue_deltaF_all)
+ggsave("all_pairwise_first_degree_deltaF.png", p_blue_deltaF_all, width = 10, height = 7, dpi = 300)
+
+# All relationship types - Kinship vs ΔF
+p_all_deltaF_allpairs <- ggplot(all_ref_relationships, aes(x = KINSHIP, y = delta_F, color = Relationship)) +
+  geom_point(size = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_vline(xintercept = c(0.044, 0.088, 0.19, 0.36), 
+             linetype = "dashed", alpha = 0.6, color = "gray30") +
+  annotate("text", x = c(0.044, 0.088, 0.19, 0.36), y = max(all_ref_relationships$delta_F, na.rm = TRUE) * 0.95, 
+           label = c("3rd", "2nd", "1st", "Clone"), 
+           color = "gray30", size = 3, angle = 90, vjust = -0.5) +
+  scale_color_manual(values = relationship_colors, name = "Relationship Type") +
+  labs(
+    title = "Kinship vs ΔF (Farm − Reference) Across All Relationship Types",
+    subtitle = paste("All", nrow(all_ref_relationships), "farm-reference pairs (not filtered to max)"),
+    x = "KING Kinship Coefficient (Φ)",
+    y = "ΔF (Farm Inbreeding − Reference Inbreeding)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    legend.position = "right"
+  )
+
+print(p_all_deltaF_allpairs)
+ggsave("all_pairwise_kinship_vs_deltaF_all_relationships.png", p_all_deltaF_allpairs, width = 12, height = 8, dpi = 300)
+
+# ------------------------------------------------------------------------------
+# F_farm by Relationship category boxplot (all pairwise)
+# ------------------------------------------------------------------------------
+
+all_ref_relationships$Relationship <- factor(
+  all_ref_relationships$Relationship,
+  levels = c("Fourth degree and unrelated", "Third degree", "Second degree", 
+             "First degree", "Highly related / clones")
+)
+
+F_by_relationship_allpairs <- all_ref_relationships %>%
+  group_by(Relationship) %>%
+  summarise(
+    n = n(),
+    pct_negative_F = round(100 * mean(F_farm < 0, na.rm = TRUE), 1),
+    mean_F_farm = round(mean(F_farm, na.rm = TRUE), 3),
+    median_F_farm = round(median(F_farm, na.rm = TRUE), 3),
+    min_F_farm = round(min(F_farm, na.rm = TRUE), 3),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(pct_negative_F))
+
+print(F_by_relationship_allpairs)
+
+p_F_by_relationship_allpairs <- ggplot(all_ref_relationships, aes(x = Relationship, y = F_farm, fill = Relationship)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray30") +
+  scale_fill_manual(values = relationship_colors) +
+  labs(
+    title = "Farm Sample Inbreeding Coefficient (F) by Relationship to Reference",
+    subtitle = "All pairwise relationships (not filtered to max)",
+    y = "Inbreeding Coefficient (F) - Farm Sample",
+    x = "Relationship Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p_F_by_relationship_allpairs)
+ggsave("all_pairwise_F_farm_by_relationship_category.png", p_F_by_relationship_allpairs, width = 10, height = 7, dpi = 300)
